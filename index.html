@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Van Build Budget Estimator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Space+Grotesk:wght@500;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+  </head>
+  <body>
+    <main class="page-shell">
+      <header class="hero">
+        <p class="eyebrow">Customer Estimate Builder</p>
+        <h1>Van Build Budget Estimator</h1>
+        <p class="intro">
+          Select a van profile and components to generate a customer-ready estimate.
+        </p>
+      </header>
+
+      <section class="panel controls-panel">
+        <h2>Van Information</h2>
+        <div class="grid">
+          <label>
+            Year
+            <input id="van-year" type="number" min="1980" max="2100" placeholder="2023" />
+          </label>
+          <label>
+            Make
+            <input id="van-make" type="text" placeholder="Ram" />
+          </label>
+          <label>
+            Model
+            <input id="van-model" type="text" placeholder="Promaster 2500" />
+          </label>
+          <label>
+            Van Type (compatibility filter)
+            <select id="van-type"></select>
+          </label>
+          <label>
+            Labor Rate ($/hour)
+            <input id="labor-rate" type="number" min="0" step="0.01" />
+          </label>
+          <label>
+            Tax Rate (%)
+            <input id="tax-rate" type="number" min="0" step="0.01" />
+          </label>
+        </div>
+        <p id="source-status" class="source-status"></p>
+      </section>
+
+      <section id="estimate-meta" class="panel printable-meta"></section>
+
+      <section id="sections-container" class="sections"></section>
+
+      <section class="panel totals-panel">
+        <h2>Overall Totals</h2>
+        <div class="totals-grid">
+          <article>
+            <h3>Material Cost</h3>
+            <p id="overall-material" class="money">$0.00</p>
+          </article>
+          <article>
+            <h3>Labor Cost</h3>
+            <p id="overall-labor" class="money">$0.00</p>
+          </article>
+          <article>
+            <h3>Pre-Tax Total</h3>
+            <p id="overall-pre-tax" class="money">$0.00</p>
+          </article>
+          <article>
+            <h3>Tax</h3>
+            <p id="overall-tax" class="money">$0.00</p>
+          </article>
+          <article class="grand-total-card">
+            <h3>Total With Tax</h3>
+            <p id="overall-total" class="money big">$0.00</p>
+          </article>
+        </div>
+        <div class="actions no-print">
+          <button id="print-button" type="button">Print / Save PDF</button>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>

@@ -1,0 +1,75 @@
+{
+  "defaultLaborRate": 115,
+  "taxRate": 8.25,
+  "sections": [
+    {
+      "name": "Floors",
+      "items": [
+        {
+          "product": "Marine Grade Plywood + LVT",
+          "materialCost": 1280,
+          "laborHours": 14,
+          "compatible": ["promaster", "sprinter", "transit"]
+        },
+        {
+          "product": "Insulated Composite Subfloor",
+          "materialCost": 950,
+          "laborHours": 11,
+          "compatible": ["promaster", "transit"]
+        },
+        {
+          "product": "Coin Rubber Utility Floor",
+          "materialCost": 690,
+          "laborHours": 7,
+          "compatible": ["promaster", "sprinter"]
+        }
+      ]
+    },
+    {
+      "name": "Seating",
+      "items": [
+        {
+          "product": "Factory Bench Seat Refit",
+          "materialCost": 740,
+          "laborHours": 8,
+          "compatible": ["transit", "promaster"]
+        },
+        {
+          "product": "Swivel Captain Chair Pair",
+          "materialCost": 1680,
+          "laborHours": 10,
+          "compatible": ["sprinter", "promaster", "transit"]
+        },
+        {
+          "product": "Dinette Conversion Bench",
+          "materialCost": 2230,
+          "laborHours": 21,
+          "compatible": ["sprinter", "transit"]
+        }
+      ]
+    },
+    {
+      "name": "Ceiling",
+      "items": [
+        {
+          "product": "Cedar Slat Ceiling",
+          "materialCost": 1360,
+          "laborHours": 13,
+          "compatible": ["promaster", "sprinter", "transit"]
+        },
+        {
+          "product": "Fabric Wrapped Acoustic Ceiling",
+          "materialCost": 920,
+          "laborHours": 9,
+          "compatible": ["promaster", "transit"]
+        },
+        {
+          "product": "Aluminum Track + Panel Ceiling",
+          "materialCost": 1530,
+          "laborHours": 15,
+          "compatible": ["sprinter"]
+        }
+      ]
+    }
+  ]
+}
