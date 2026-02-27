@@ -30,6 +30,8 @@ Run commands from repository root: `/Users/declan/Documents/awd_estimator_tool`.
   - `npm run build`
 - Preview production bundle locally:
   - `npm run preview`
+- GitHub Pages CI build:
+  - Workflow passes Vite `--base` dynamically (`/` for `*.github.io` repos, `/<repo>/` otherwise).
 
 Environment note:
 
@@ -158,5 +160,6 @@ Follow existing code conventions from `src/app.js`.
 
 - Describe behavior impact, not just file edits.
 - Mention fallback/data-loading effects explicitly when touched.
+- Mention GitHub Pages base-path handling when deployment workflow changes.
 - Call out any command limitations (no lint/test scripts yet).
 - If you add lint/tests in the future, update this `AGENTS.md` in the same change.
