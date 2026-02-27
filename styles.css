@@ -90,11 +90,17 @@ button {
 }
 
 input,
-select {
+select,
+textarea {
   border: 1px solid #cdbfa9;
   border-radius: 10px;
   padding: 0.58rem 0.65rem;
   background: #fff;
+}
+
+textarea {
+  resize: vertical;
+  min-height: 70px;
 }
 
 button {
@@ -114,6 +120,32 @@ button:hover {
 button.secondary {
   background: #e7dfcf;
   color: #443d2f;
+}
+
+button.secondary.active {
+  background: var(--accent);
+  color: #fff;
+}
+
+.view-toggle {
+  margin-top: 0.8rem;
+  display: flex;
+  gap: 0.45rem;
+}
+
+.notes-field {
+  grid-column: 1 / -1;
+}
+
+.no-spinner {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.no-spinner::-webkit-outer-spin-button,
+.no-spinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
 }
 
 .source-status {
@@ -308,7 +340,6 @@ th {
   }
 
   .no-print,
-  .controls-panel,
   .source-status {
     display: none !important;
   }

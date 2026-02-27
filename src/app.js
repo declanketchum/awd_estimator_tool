@@ -2,12 +2,12 @@ const CSV_SOURCE_URL =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vRMpK2oJSiJb4_JUHEXu1ThT4U33ByWK46jZNR8isA5KSLDY3BkM_p1UTf_LF6BKBfQbHrTVPNCg31q/pub?output=csv";
 
 const dom = {
-  year: document.getElementById("van-year"),
-  make: document.getElementById("van-make"),
-  model: document.getElementById("van-model"),
+  clientName: document.getElementById("client-name"),
+  vanInfo: document.getElementById("van-info"),
   vanType: document.getElementById("van-type"),
   laborRate: document.getElementById("labor-rate"),
   taxRate: document.getElementById("tax-rate"),
+  notes: document.getElementById("estimate-notes"),
   sections: document.getElementById("sections-container"),
   status: document.getElementById("source-status"),
   estimateMeta: document.getElementById("estimate-meta"),
@@ -17,6 +17,8 @@ const dom = {
   overallTax: document.getElementById("overall-tax"),
   overallTotal: document.getElementById("overall-total"),
   printButton: document.getElementById("print-button"),
+  builderViewToggle: document.getElementById("builder-view-toggle"),
+  clientViewToggle: document.getElementById("client-view-toggle"),
 };
 
 const state = {
@@ -24,13 +26,14 @@ const state = {
   selectedBySection: {},
   collapsedBySection: {},
   estimate: {
-    year: "",
-    make: "",
-    model: "",
+    clientName: "",
+    vanInfo: "",
     vanType: "",
-    laborRate: 110,
-    taxRate: 8.25,
+    laborRate: 165,
+    taxRate: 10.5,
+    notes: "",
   },
+  viewMode: "builder",
 };
 
 const numberFormatter = new Intl.NumberFormat("en-US", {
@@ -212,12 +215,21 @@ const loadCatalog = async () => {
   return {
     sections,
     vanTypes: compatibilityColumns.map(({ key }) => key),
-    defaultLaborRate: 110,
-    taxRate: 8.25,
+    defaultLaborRate: 165,
+    taxRate: 10.5,
   };
 };
 
 const formatMoney = (value) => numberFormatter.format(value || 0);
+
+const notesMarkup = (value) => escapeHtml(value || "").replace(/\n/g, "<br />");
+
+const isBuilderView = () => state.viewMode === "builder";
+
+const renderViewModeToggle = () => {
+  dom.builderViewToggle.classList.toggle("active", isBuilderView());
+  dom.clientViewToggle.classList.toggle("active", !isBuilderView());
+};
 
 const renderVanTypes = () => {
   const options = [
@@ -240,7 +252,7 @@ const selectedItemsForSection = (section) => {
 
       const countValue = asNumber(selection.count);
       const markupValue = asNumber(selection.markup);
-      const count = countValue > 0 ? countValue : 1;
+      const count = Math.max(1, Math.trunc(countValue || 0));
       const markup = markupValue > 0 ? markupValue : 1.2;
 
       return {
@@ -278,9 +290,10 @@ const updateSelectedItemValues = (sectionName, itemId, field, rawValue) => {
     }
 
     if (field === "count") {
+      const integerCount = Math.max(1, Math.trunc(nextValue || 0));
       return {
         ...entry,
-        count: nextValue > 0 ? nextValue : 1,
+        count: integerCount,
       };
     }
 
@@ -316,6 +329,7 @@ const sectionMarkup = (section) => {
   const vanType = state.estimate.vanType;
   const collapsed = Boolean(state.collapsedBySection[section.name]);
   const totals = sectionTotals(section);
+  const showBuilderColumns = isBuilderView();
 
   const compatibleOptions = section.items.filter((item) => {
     if (selectedIds.has(item.id)) {
@@ -351,9 +365,9 @@ const sectionMarkup = (section) => {
             <td>${escapeHtml(item.description)}</td>
             <td>${linkMarkup}</td>
             <td>${escapeHtml(item.itemSize || "-")}</td>
-            <td>${formatMoney(item.pricePerUnit)}</td>
-            <td class="no-print"><input class="line-input item-count" type="number" min="0.01" step="0.01" value="${item.count}" data-section="${escapeHtml(section.name)}" data-item="${escapeHtml(item.id)}" /></td>
-            <td class="no-print"><input class="line-input item-markup" type="number" min="0.01" step="0.01" value="${item.markup.toFixed(2)}" data-section="${escapeHtml(section.name)}" data-item="${escapeHtml(item.id)}" /></td>
+            ${showBuilderColumns ? `<td>${formatMoney(item.pricePerUnit)}</td>` : ""}
+            <td><input class="line-input item-count" type="number" min="1" step="1" value="${Math.max(1, Math.trunc(item.count))}" data-section="${escapeHtml(section.name)}" data-item="${escapeHtml(item.id)}" /></td>
+            ${showBuilderColumns ? `<td><input class="line-input item-markup no-spinner" type="number" min="0.01" step="0.01" value="${item.markup.toFixed(2)}" data-section="${escapeHtml(section.name)}" data-item="${escapeHtml(item.id)}" /></td>` : ""}
             <td>${formatMoney(materialCost)}</td>
             <td>${rowHours.toFixed(2)}</td>
             <td>${formatMoney(laborCost)}</td>
@@ -362,7 +376,7 @@ const sectionMarkup = (section) => {
           </tr>`;
         })
         .join("")
-    : `<tr><td class="empty-row" colspan="11">No items selected in this panel yet.</td></tr>`;
+    : `<tr><td class="empty-row" colspan="${showBuilderColumns ? 11 : 9}">No items selected in this panel yet.</td></tr>`;
 
   const pickerId = `pick-${sectionKey(section.name)}`;
 
@@ -401,9 +415,9 @@ const sectionMarkup = (section) => {
           <th>Item Description</th>
           <th>Link</th>
           <th>Item Size</th>
-          <th>Price Per Unit</th>
-          <th class="no-print">Count</th>
-          <th class="no-print">Markup</th>
+          ${showBuilderColumns ? "<th>Price Per Unit</th>" : ""}
+          <th>Count</th>
+          ${showBuilderColumns ? "<th>Markup</th>" : ""}
           <th>Material Cost</th>
           <th>Est. Hours</th>
           <th>Labor Cost</th>
@@ -452,18 +466,18 @@ const renderTotals = () => {
 };
 
 const renderPrintableMeta = () => {
-  const title = `${state.estimate.year || ""} ${state.estimate.make || ""} ${state.estimate.model || ""}`
-    .trim()
-    .replace(/\s+/g, " ");
   dom.estimateMeta.innerHTML = `<h2>Estimate Details</h2>
-    <p><strong>Van:</strong> ${escapeHtml(title || "Not specified")}</p>
+    <p><strong>Client:</strong> ${escapeHtml(state.estimate.clientName || "Not specified")}</p>
+    <p><strong>Van Info:</strong> ${escapeHtml(state.estimate.vanInfo || "Not specified")}</p>
     <p><strong>Compatibility Profile:</strong> ${escapeHtml(state.estimate.vanType || "Not selected")}</p>
     <p><strong>Labor Rate:</strong> ${formatMoney(state.estimate.laborRate)} / hr</p>
-    <p><strong>Tax Rate:</strong> ${state.estimate.taxRate.toFixed(2)}%</p>`;
+    <p><strong>Tax Rate:</strong> ${state.estimate.taxRate.toFixed(2)}%</p>
+    <p><strong>Notes:</strong> ${notesMarkup(state.estimate.notes) || "-"}</p>`;
 };
 
 const render = () => {
   renderPrintableMeta();
+  renderViewModeToggle();
   renderSections();
   renderTotals();
 };
@@ -543,18 +557,13 @@ const wireEvents = () => {
     }
   });
 
-  dom.year.addEventListener("input", () => {
-    state.estimate.year = dom.year.value;
+  dom.clientName.addEventListener("input", () => {
+    state.estimate.clientName = dom.clientName.value;
     renderPrintableMeta();
   });
 
-  dom.make.addEventListener("input", () => {
-    state.estimate.make = dom.make.value;
-    renderPrintableMeta();
-  });
-
-  dom.model.addEventListener("input", () => {
-    state.estimate.model = dom.model.value;
+  dom.vanInfo.addEventListener("input", () => {
+    state.estimate.vanInfo = dom.vanInfo.value;
     renderPrintableMeta();
   });
 
@@ -583,6 +592,21 @@ const wireEvents = () => {
     render();
   });
 
+  dom.notes.addEventListener("input", () => {
+    state.estimate.notes = dom.notes.value;
+    renderPrintableMeta();
+  });
+
+  dom.builderViewToggle.addEventListener("click", () => {
+    state.viewMode = "builder";
+    render();
+  });
+
+  dom.clientViewToggle.addEventListener("click", () => {
+    state.viewMode = "client";
+    render();
+  });
+
   dom.printButton.addEventListener("click", () => {
     window.print();
   });
@@ -596,6 +620,9 @@ const init = async () => {
 
     dom.laborRate.value = state.estimate.laborRate;
     dom.taxRate.value = state.estimate.taxRate;
+    dom.clientName.value = state.estimate.clientName;
+    dom.vanInfo.value = state.estimate.vanInfo;
+    dom.notes.value = state.estimate.notes;
 
     for (const section of state.catalog.sections) {
       state.selectedBySection[section.name] = [];

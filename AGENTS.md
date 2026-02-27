@@ -113,6 +113,9 @@ Follow existing code conventions from `src/app.js`.
 - Keep mutable app state in a single `state` object.
 - `selectedBySection` stores line-item selections as objects (`id`, `count`, `markup`), not plain id strings.
 - `collapsedBySection` controls whether each panel is collapsed to header + section total.
+- `viewMode` toggles Builder vs Client presentation (Client hides price-per-unit and markup columns).
+- `estimate.notes` stores freeform notes entered in the top control panel.
+- `estimate.clientName` and `estimate.vanInfo` store project-level customer/vehicle metadata.
 - Re-render after state changes rather than mutating DOM in many places.
 - Derive totals from state, not from previously rendered text.
 - Keep section/item selection logic deterministic and id-based.
@@ -141,7 +144,7 @@ Follow existing code conventions from `src/app.js`.
 - Responsive behavior:
   - Maintain breakpoints at ~980px and ~640px unless intentionally redesigned.
 - Print support:
-  - Keep `@media print` behavior intact for customer PDF output.
+  - Keep `@media print` behavior aligned with on-screen estimate details for customer PDF output.
 
 ## Change Workflow for Agents
 
