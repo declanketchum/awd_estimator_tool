@@ -21,62 +21,28 @@ Then publish the `dist/` folder with your preferred GitHub Pages flow.
 
 ## Data source setup
 
-The app first tries to read the Excel file directly from `EXCEL_EMBED_URL` in `src/app.js`.
+The app reads from a published Google Sheets CSV URL in `CSV_SOURCE_URL` inside `src/app.js`.
 
-If that fails (common with Office embed links because of CORS/auth/session requirements), it automatically falls back to `data/catalog.json`.
+Current source:
 
-### Why your current embed URL usually fails in browser apps
+`https://docs.google.com/spreadsheets/d/e/2PACX-1vRMpK2oJSiJb4_JUHEXu1ThT4U33ByWK46jZNR8isA5KSLDY3BkM_p1UTf_LF6BKBfQbHrTVPNCg31q/pub?output=csv`
 
-`https://1drv.ms/x/...` embed links are made for iframe rendering, not reliable JSON/Excel API access from browser JavaScript.
+## CSV format expected
 
-### Recommended production approach
+The parser expects a header row with these columns (case-insensitive matching):
 
-1. Keep Excel as your editing source of truth.
-2. Export workbook tables into `data/catalog.json` as part of your update process.
-3. Commit the updated JSON to GitHub Pages.
+- `Type` (or `Types`) -> used to create one panel per unique type
+- `Item Description`
+- `Link`
+- `Item Size`
+- `Price per unit`
+- `Est.Hrs`
+- Van compatibility columns: `Promaster`, `Sprinter`, `Transit`, `Other`
 
-This is the most reliable option for a fully static website.
+Compatibility columns use `x` (or `yes`, `true`, `1`) to mark that an item works with a van type.
 
-### Optional direct Excel loading approach
+Behavior:
 
-If you want direct loading from OneDrive:
-
-1. Make the workbook publicly viewable.
-2. Use a direct file-download `.xlsx` URL (not embed URL).
-3. Put that direct URL in `EXCEL_EMBED_URL` in `src/app.js`.
-
-If CORS or permissions still block this, use the JSON export approach above.
-
-## Data format expected in JSON
-
-`data/catalog.json` uses this shape:
-
-```json
-{
-  "defaultLaborRate": 115,
-  "taxRate": 8.25,
-  "sections": [
-    {
-      "name": "Floors",
-      "items": [
-        {
-          "product": "Marine Grade Plywood + LVT",
-          "materialCost": 1280,
-          "laborHours": 14,
-          "compatible": ["promaster", "sprinter", "transit"]
-        }
-      ]
-    }
-  ]
-}
-```
-
-## Spreadsheet parsing behavior
-
-When direct Excel load is available, each worksheet is treated as one estimate section. The parser looks for column names containing:
-
-- Product: `product`, `item`, or `name`
-- Material cost: `material cost`, `material`, `parts cost`, `price`
-- Labor hours: `labor hours`, `hours`, `install hours`, `labor time`
-
-Any other non-metadata column is treated as a compatibility column (`x`, `yes`, `1`, `true` = compatible).
+- Panels are grouped by unique `Type` values.
+- Panel dropdown options include only items from that panel's `Type`.
+- Dropdown options are additionally filtered by selected van type.

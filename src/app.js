@@ -1,6 +1,5 @@
-const EXCEL_EMBED_URL =
-  "https://1drv.ms/x/c/2f17e48ccd89da80/IQQAUD9hKxCWQL2iPFAs0DdDAXp6zWDmoNVmf6lgpGCpXY4?em=2&wdAllowInteractivity=False&wdHideGridlines=True&wdHideHeaders=True&wdDownloadButton=True&wdInConfigurator=True&wdInConfigurator=True";
-const FALLBACK_JSON_PATH = "./data/catalog.json";
+const CSV_SOURCE_URL =
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vRMpK2oJSiJb4_JUHEXu1ThT4U33ByWK46jZNR8isA5KSLDY3BkM_p1UTf_LF6BKBfQbHrTVPNCg31q/pub?output=csv";
 
 const dom = {
   year: document.getElementById("van-year"),
@@ -17,25 +16,26 @@ const dom = {
   overallPreTax: document.getElementById("overall-pre-tax"),
   overallTax: document.getElementById("overall-tax"),
   overallTotal: document.getElementById("overall-total"),
-  printButton: document.getElementById("print-button")
+  printButton: document.getElementById("print-button"),
 };
 
 const state = {
   catalog: null,
   selectedBySection: {},
+  collapsedBySection: {},
   estimate: {
     year: "",
     make: "",
     model: "",
     vanType: "",
     laborRate: 110,
-    taxRate: 8.25
-  }
+    taxRate: 8.25,
+  },
 };
 
 const numberFormatter = new Intl.NumberFormat("en-US", {
   style: "currency",
-  currency: "USD"
+  currency: "USD",
 });
 
 const makeId = (sectionName, rowIndex) =>
@@ -43,6 +43,8 @@ const makeId = (sectionName, rowIndex) =>
 
 const sectionKey = (sectionName) =>
   sectionName.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+
+const normalize = (value) => String(value || "").trim().toLowerCase();
 
 const asNumber = (value) => {
   if (typeof value === "number") {
@@ -67,155 +69,152 @@ const yesValue = (value) => {
   return ["x", "yes", "y", "true", "1", "compatible"].includes(normalized);
 };
 
-const normalize = (value) => String(value || "").trim().toLowerCase();
+const escapeHtml = (value) =>
+  String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+
+const parseCsv = (text) => {
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    const next = text[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        cell += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (!inQuotes && char === ",") {
+      row.push(cell);
+      cell = "";
+      continue;
+    }
+
+    if (!inQuotes && (char === "\n" || char === "\r")) {
+      if (char === "\r" && next === "\n") {
+        i += 1;
+      }
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+      continue;
+    }
+
+    cell += char;
+  }
+
+  if (cell.length > 0 || row.length > 0) {
+    row.push(cell);
+    rows.push(row);
+  }
+
+  return rows;
+};
 
 const pickColumn = (headers, candidates) => {
-  const normalizedHeaders = headers.map((h) => normalize(h));
+  const normalizedHeaders = headers.map((header) => normalize(header));
   return normalizedHeaders.findIndex((header) =>
     candidates.some((candidate) => header.includes(candidate))
   );
 };
 
-const knownColumn = (name) => {
-  const value = normalize(name);
-  const known = [
-    "product",
-    "item",
-    "name",
-    "material",
-    "labor",
-    "hours",
-    "cost",
-    "notes",
-    "description",
-    "sku",
-    "part",
-    "quantity",
-    "qty",
-    "unit",
-    "total"
-  ];
-
-  return known.some((token) => value.includes(token));
+const labelForVanType = (value) => {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "Unknown";
+  }
+  return text[0].toUpperCase() + text.slice(1);
 };
 
-const tableFromSheet = (sheetName, rows) => {
+const loadCatalog = async () => {
+  const response = await fetch(CSV_SOURCE_URL);
+  if (!response.ok) {
+    throw new Error(`CSV request failed with ${response.status}`);
+  }
+
+  const csvText = await response.text();
+  const rows = parseCsv(csvText);
   if (!rows.length) {
-    return null;
+    throw new Error("CSV source returned no rows");
   }
 
   const [headerRow, ...bodyRows] = rows;
   const headers = headerRow.map((header) => String(header || "").trim());
-  const productCol = pickColumn(headers, ["product", "item", "name"]);
-  const materialCol = pickColumn(headers, ["material cost", "material", "parts cost", "price"]);
-  const laborHoursCol = pickColumn(headers, ["labor hours", "hours", "install hours", "labor time"]);
 
-  if (productCol < 0) {
-    return null;
+  const typeCol = pickColumn(headers, ["type", "types"]);
+  const descriptionCol = pickColumn(headers, ["item description", "product", "item", "name"]);
+  const linkCol = pickColumn(headers, ["link", "url"]);
+  const sizeCol = pickColumn(headers, ["item size", "size"]);
+  const priceCol = pickColumn(headers, ["price per unit", "price", "material cost"]);
+  const estHoursCol = pickColumn(headers, ["est.hrs", "est hrs", "estimated hours", "labor hours", "hours"]);
+
+  if (typeCol < 0 || descriptionCol < 0) {
+    throw new Error("CSV is missing required Type and Item Description columns");
   }
 
+  const knownVanTypes = ["promaster", "sprinter", "transit", "other"];
   const compatibilityColumns = headers
-    .map((header, index) => ({ header, index }))
-    .filter(({ header, index }) => index !== productCol && index !== materialCol && index !== laborHoursCol)
-    .filter(({ header }) => header && !knownColumn(header));
-
-  const items = bodyRows
-    .filter((row) => row[productCol])
-    .map((row, rowIndex) => {
-      const compatible = compatibilityColumns
-        .filter(({ index }) => yesValue(row[index]))
-        .map(({ header }) => normalize(header));
-
-      return {
-        id: makeId(sheetName, rowIndex),
-        product: String(row[productCol]).trim(),
-        materialCost: asNumber(row[materialCol]),
-        laborHours: asNumber(row[laborHoursCol]),
-        compatible
-      };
-    });
-
-  return {
-    name: sheetName,
-    items
-  };
-};
-
-const normalizeCatalog = (rawCatalog) => {
-  if (!rawCatalog?.sections?.length) {
-    throw new Error("Catalog is missing sections");
-  }
-
-  const sections = rawCatalog.sections.map((section) => ({
-    name: section.name,
-    items: (section.items || []).map((item, idx) => ({
-      id: item.id || makeId(section.name, idx),
-      product: String(item.product || "").trim(),
-      materialCost: asNumber(item.materialCost),
-      laborHours: asNumber(item.laborHours),
-      compatible: (item.compatible || []).map((entry) => normalize(entry))
+    .map((header, index) => ({
+      index,
+      key: normalize(header),
     }))
-  }));
+    .filter(({ key }) => knownVanTypes.includes(key));
 
-  const vanTypes = Array.from(
-    new Set(
-      sections.flatMap((section) =>
-        section.items.flatMap((item) => item.compatible.filter(Boolean))
-      )
-    )
-  ).sort();
+  const sectionsMap = new Map();
+
+  bodyRows.forEach((row, rowIndex) => {
+    const sectionName = String(row[typeCol] || "").trim();
+    const itemDescription = String(row[descriptionCol] || "").trim();
+
+    if (!sectionName || !itemDescription) {
+      return;
+    }
+
+    const compatible = compatibilityColumns
+      .filter(({ index }) => yesValue(row[index]))
+      .map(({ key }) => key);
+
+    const item = {
+      id: makeId(sectionName, rowIndex),
+      description: itemDescription,
+      link: String(linkCol >= 0 ? row[linkCol] || "" : "").trim(),
+      itemSize: String(sizeCol >= 0 ? row[sizeCol] || "" : "").trim(),
+      pricePerUnit: asNumber(priceCol >= 0 ? row[priceCol] : 0),
+      estimatedHours: asNumber(estHoursCol >= 0 ? row[estHoursCol] : 0),
+      compatible,
+    };
+
+    if (!sectionsMap.has(sectionName)) {
+      sectionsMap.set(sectionName, []);
+    }
+    sectionsMap.get(sectionName).push(item);
+  });
+
+  const sections = Array.from(sectionsMap.entries()).map(([name, items]) => ({
+    name,
+    items,
+  }));
 
   return {
     sections,
-    vanTypes,
-    defaultLaborRate: asNumber(rawCatalog.defaultLaborRate) || 110,
-    taxRate: asNumber(rawCatalog.taxRate) || 8.25
+    vanTypes: compatibilityColumns.map(({ key }) => key),
+    defaultLaborRate: 110,
+    taxRate: 8.25,
   };
-};
-
-const loadCatalogFromExcel = async (sourceUrl) => {
-  if (!window.XLSX) {
-    throw new Error("SheetJS is unavailable");
-  }
-
-  const response = await fetch(sourceUrl);
-  if (!response.ok) {
-    throw new Error(`Excel request failed with ${response.status}`);
-  }
-
-  const buffer = await response.arrayBuffer();
-  const workbook = window.XLSX.read(buffer, { type: "array" });
-  const sections = workbook.SheetNames.map((sheetName) => {
-    const rows = window.XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
-      header: 1,
-      defval: ""
-    });
-    return tableFromSheet(sheetName, rows);
-  }).filter(Boolean);
-
-  return normalizeCatalog({ sections });
-};
-
-const loadCatalogFallback = async () => {
-  const response = await fetch(FALLBACK_JSON_PATH);
-  if (!response.ok) {
-    throw new Error(`Fallback data request failed with ${response.status}`);
-  }
-  const json = await response.json();
-  return normalizeCatalog(json);
-};
-
-const loadCatalog = async () => {
-  try {
-    const catalog = await loadCatalogFromExcel(EXCEL_EMBED_URL);
-    dom.status.textContent = "Loaded data from the Excel source.";
-    return catalog;
-  } catch (error) {
-    const catalog = await loadCatalogFallback();
-    dom.status.textContent =
-      "Could not load data directly from the Excel embed URL in browser mode. Using local JSON fallback. See README for direct OneDrive download-link setup.";
-    return catalog;
-  }
 };
 
 const formatMoney = (value) => numberFormatter.format(value || 0);
@@ -224,26 +223,76 @@ const renderVanTypes = () => {
   const options = [
     "<option value=''>Select van type</option>",
     ...state.catalog.vanTypes.map(
-      (type) => `<option value="${type}">${type[0].toUpperCase()}${type.slice(1)}</option>`
-    )
+      (type) => `<option value="${escapeHtml(type)}">${escapeHtml(labelForVanType(type))}</option>`
+    ),
   ];
   dom.vanType.innerHTML = options.join("");
 };
 
 const selectedItemsForSection = (section) => {
-  const ids = state.selectedBySection[section.name] || [];
-  return ids
-    .map((id) => section.items.find((item) => item.id === id))
+  const selections = state.selectedBySection[section.name] || [];
+  return selections
+    .map((selection) => {
+      const item = section.items.find((entry) => entry.id === selection.id);
+      if (!item) {
+        return null;
+      }
+
+      const countValue = asNumber(selection.count);
+      const markupValue = asNumber(selection.markup);
+      const count = countValue > 0 ? countValue : 1;
+      const markup = markupValue > 0 ? markupValue : 1.2;
+
+      return {
+        ...item,
+        count,
+        markup,
+      };
+    })
     .filter(Boolean);
 };
 
 const sectionTotals = (section) => {
   const items = selectedItemsForSection(section);
-  const laborHours = items.reduce((sum, item) => sum + item.laborHours, 0);
-  const materialCost = items.reduce((sum, item) => sum + item.materialCost, 0);
+  const laborHours = items.reduce((sum, item) => sum + item.estimatedHours * item.count, 0);
+  const materialCost = items.reduce(
+    (sum, item) => sum + item.pricePerUnit * item.count * item.markup,
+    0
+  );
   const laborCost = laborHours * state.estimate.laborRate;
   const total = materialCost + laborCost;
   return { laborHours, materialCost, laborCost, total };
+};
+
+const setPanelCollapsed = (sectionName, collapsed) => {
+  state.collapsedBySection[sectionName] = Boolean(collapsed);
+};
+
+const updateSelectedItemValues = (sectionName, itemId, field, rawValue) => {
+  const selected = state.selectedBySection[sectionName] || [];
+  const nextValue = asNumber(rawValue);
+
+  state.selectedBySection[sectionName] = selected.map((entry) => {
+    if (entry.id !== itemId) {
+      return entry;
+    }
+
+    if (field === "count") {
+      return {
+        ...entry,
+        count: nextValue > 0 ? nextValue : 1,
+      };
+    }
+
+    if (field === "markup") {
+      return {
+        ...entry,
+        markup: nextValue > 0 ? nextValue : 1.2,
+      };
+    }
+
+    return entry;
+  });
 };
 
 const totalsAcrossSections = () => {
@@ -257,7 +306,7 @@ const totalsAcrossSections = () => {
     labor,
     preTax,
     tax,
-    total: preTax + tax
+    total: preTax + tax,
   };
 };
 
@@ -265,60 +314,100 @@ const sectionMarkup = (section) => {
   const selectedItems = selectedItemsForSection(section);
   const selectedIds = new Set(selectedItems.map((item) => item.id));
   const vanType = state.estimate.vanType;
+  const collapsed = Boolean(state.collapsedBySection[section.name]);
+  const totals = sectionTotals(section);
 
-  const compatibleOptions = section.items.filter(
-    (item) => vanType && item.compatible.includes(vanType) && !selectedIds.has(item.id)
-  );
+  const compatibleOptions = section.items.filter((item) => {
+    if (selectedIds.has(item.id)) {
+      return false;
+    }
+    if (!vanType) {
+      return false;
+    }
+    return item.compatible.includes(vanType);
+  });
 
   const optionsMarkup = compatibleOptions.length
     ? compatibleOptions
         .map(
           (item) =>
-            `<option value="${item.id}">${item.product} (${formatMoney(item.materialCost)}, ${item.laborHours} hrs)</option>`
+            `<option value="${escapeHtml(item.id)}">${escapeHtml(item.description)} (${formatMoney(item.pricePerUnit)}, ${item.estimatedHours.toFixed(2)} hrs)</option>`
         )
         .join("")
-    : "<option value=''>No compatible products available</option>";
+    : "<option value=''>No compatible items available</option>";
 
   const rowsMarkup = selectedItems.length
     ? selectedItems
         .map((item) => {
-          const laborCost = item.laborHours * state.estimate.laborRate;
-          const total = laborCost + item.materialCost;
+          const rowHours = item.estimatedHours * item.count;
+          const materialCost = item.pricePerUnit * item.count * item.markup;
+          const laborCost = rowHours * state.estimate.laborRate;
+          const total = laborCost + materialCost;
+          const linkMarkup = item.link
+            ? `<a href="${escapeHtml(item.link)}" target="_blank" rel="noopener noreferrer">Open</a>`
+            : "-";
+
           return `<tr>
-            <td>${item.product}</td>
-            <td>${formatMoney(item.materialCost)}</td>
-            <td>${item.laborHours.toFixed(2)}</td>
+            <td>${escapeHtml(item.description)}</td>
+            <td>${linkMarkup}</td>
+            <td>${escapeHtml(item.itemSize || "-")}</td>
+            <td>${formatMoney(item.pricePerUnit)}</td>
+            <td class="no-print"><input class="line-input item-count" type="number" min="0.01" step="0.01" value="${item.count}" data-section="${escapeHtml(section.name)}" data-item="${escapeHtml(item.id)}" /></td>
+            <td class="no-print"><input class="line-input item-markup" type="number" min="0.01" step="0.01" value="${item.markup.toFixed(2)}" data-section="${escapeHtml(section.name)}" data-item="${escapeHtml(item.id)}" /></td>
+            <td>${formatMoney(materialCost)}</td>
+            <td>${rowHours.toFixed(2)}</td>
             <td>${formatMoney(laborCost)}</td>
             <td>${formatMoney(total)}</td>
-            <td class="no-print"><button class="secondary remove-item" data-section="${section.name}" data-item="${item.id}">Remove</button></td>
+            <td class="no-print"><button class="secondary remove-item" data-section="${escapeHtml(section.name)}" data-item="${escapeHtml(item.id)}">Remove</button></td>
           </tr>`;
         })
         .join("")
-    : `<tr><td class="empty-row" colspan="6">No products selected in this section yet.</td></tr>`;
-
-  const totals = sectionTotals(section);
+    : `<tr><td class="empty-row" colspan="11">No items selected in this panel yet.</td></tr>`;
 
   const pickerId = `pick-${sectionKey(section.name)}`;
 
+  if (collapsed) {
+    return `<article class="panel">
+      <div class="section-header compact">
+        <h2>${escapeHtml(section.name)}</h2>
+        <div class="section-header-actions">
+          <p class="section-total">${formatMoney(totals.total)}</p>
+          <button class="secondary collapse-toggle no-print" data-section="${escapeHtml(section.name)}">Expand</button>
+        </div>
+      </div>
+    </article>`;
+  }
+
   return `<article class="panel">
     <div class="section-header">
-      <h2>${section.name}</h2>
-      <div class="section-controls no-print">
-        <select id="${pickerId}">
-          <option value="">Select a compatible product</option>
-          ${optionsMarkup}
-        </select>
-        <button class="add-item" data-section="${section.name}">Add</button>
+      <h2>${escapeHtml(section.name)}</h2>
+      <div class="section-header-actions">
+        <p class="section-total">${formatMoney(totals.total)}</p>
+        <button class="secondary collapse-toggle no-print" data-section="${escapeHtml(section.name)}">Collapse</button>
       </div>
     </div>
+
+    <div class="section-controls no-print inline-controls">
+      <select id="${escapeHtml(pickerId)}">
+        <option value="">Select a compatible item</option>
+        ${optionsMarkup}
+      </select>
+      <button class="add-item" data-section="${escapeHtml(section.name)}">Add</button>
+    </div>
+
     <table>
       <thead>
         <tr>
-          <th>Product</th>
+          <th>Item Description</th>
+          <th>Link</th>
+          <th>Item Size</th>
+          <th>Price Per Unit</th>
+          <th class="no-print">Count</th>
+          <th class="no-print">Markup</th>
           <th>Material Cost</th>
-          <th>Labor Hours</th>
+          <th>Est. Hours</th>
           <th>Labor Cost</th>
-          <th>Total Cost</th>
+          <th>Total</th>
           <th class="no-print">Actions</th>
         </tr>
       </thead>
@@ -329,19 +418,19 @@ const sectionMarkup = (section) => {
 
     <div class="section-summary">
       <div class="pill">
-        <h4>Labor Hours</h4>
+        <h4>Subtotal Hours</h4>
         <p>${totals.laborHours.toFixed(2)}</p>
       </div>
       <div class="pill">
-        <h4>Labor Cost</h4>
+        <h4>Subtotal Labor</h4>
         <p>${formatMoney(totals.laborCost)}</p>
       </div>
       <div class="pill">
-        <h4>Material Cost</h4>
+        <h4>Subtotal Material</h4>
         <p>${formatMoney(totals.materialCost)}</p>
       </div>
       <div class="pill">
-        <h4>Section Total</h4>
+        <h4>Panel Subtotal</h4>
         <p>${formatMoney(totals.total)}</p>
       </div>
     </div>
@@ -367,8 +456,8 @@ const renderPrintableMeta = () => {
     .trim()
     .replace(/\s+/g, " ");
   dom.estimateMeta.innerHTML = `<h2>Estimate Details</h2>
-    <p><strong>Van:</strong> ${title || "Not specified"}</p>
-    <p><strong>Compatibility Profile:</strong> ${state.estimate.vanType || "Not selected"}</p>
+    <p><strong>Van:</strong> ${escapeHtml(title || "Not specified")}</p>
+    <p><strong>Compatibility Profile:</strong> ${escapeHtml(state.estimate.vanType || "Not selected")}</p>
     <p><strong>Labor Rate:</strong> ${formatMoney(state.estimate.laborRate)} / hr</p>
     <p><strong>Tax Rate:</strong> ${state.estimate.taxRate.toFixed(2)}%</p>`;
 };
@@ -387,15 +476,22 @@ const onAddItem = (sectionName) => {
   }
 
   const selected = state.selectedBySection[sectionName] || [];
-  if (!selected.includes(itemId)) {
-    state.selectedBySection[sectionName] = [...selected, itemId];
+  if (!selected.some((entry) => entry.id === itemId)) {
+    state.selectedBySection[sectionName] = [
+      ...selected,
+      {
+        id: itemId,
+        count: 1,
+        markup: 1.2,
+      },
+    ];
     render();
   }
 };
 
 const onRemoveItem = (sectionName, itemId) => {
   const selected = state.selectedBySection[sectionName] || [];
-  state.selectedBySection[sectionName] = selected.filter((id) => id !== itemId);
+  state.selectedBySection[sectionName] = selected.filter((entry) => entry.id !== itemId);
   render();
 };
 
@@ -407,9 +503,43 @@ const wireEvents = () => {
       return;
     }
 
+    const collapseButton = event.target.closest(".collapse-toggle");
+    if (collapseButton) {
+      const sectionName = collapseButton.dataset.section;
+      const isCollapsed = Boolean(state.collapsedBySection[sectionName]);
+      setPanelCollapsed(sectionName, !isCollapsed);
+      render();
+      return;
+    }
+
     const removeButton = event.target.closest(".remove-item");
     if (removeButton) {
       onRemoveItem(removeButton.dataset.section, removeButton.dataset.item);
+    }
+  });
+
+  dom.sections.addEventListener("change", (event) => {
+    const countInput = event.target.closest(".item-count");
+    if (countInput) {
+      updateSelectedItemValues(
+        countInput.dataset.section,
+        countInput.dataset.item,
+        "count",
+        countInput.value
+      );
+      render();
+      return;
+    }
+
+    const markupInput = event.target.closest(".item-markup");
+    if (markupInput) {
+      updateSelectedItemValues(
+        markupInput.dataset.section,
+        markupInput.dataset.item,
+        "markup",
+        markupInput.value
+      );
+      render();
     }
   });
 
@@ -433,7 +563,11 @@ const wireEvents = () => {
     for (const section of state.catalog.sections) {
       const filtered = selectedItemsForSection(section)
         .filter((item) => item.compatible.includes(state.estimate.vanType))
-        .map((item) => item.id);
+        .map((item) => ({
+          id: item.id,
+          count: item.count,
+          markup: item.markup,
+        }));
       state.selectedBySection[section.name] = filtered;
     }
     render();
@@ -455,20 +589,29 @@ const wireEvents = () => {
 };
 
 const init = async () => {
-  state.catalog = await loadCatalog();
-  state.estimate.laborRate = state.catalog.defaultLaborRate;
-  state.estimate.taxRate = state.catalog.taxRate;
+  try {
+    state.catalog = await loadCatalog();
+    state.estimate.laborRate = state.catalog.defaultLaborRate;
+    state.estimate.taxRate = state.catalog.taxRate;
 
-  dom.laborRate.value = state.estimate.laborRate;
-  dom.taxRate.value = state.estimate.taxRate;
+    dom.laborRate.value = state.estimate.laborRate;
+    dom.taxRate.value = state.estimate.taxRate;
 
-  for (const section of state.catalog.sections) {
-    state.selectedBySection[section.name] = [];
+    for (const section of state.catalog.sections) {
+      state.selectedBySection[section.name] = [];
+      state.collapsedBySection[section.name] = false;
+    }
+
+    dom.status.textContent = "Loaded data from Google Drive CSV source.";
+    renderVanTypes();
+    wireEvents();
+    render();
+  } catch (error) {
+    dom.status.textContent =
+      "Could not load data from Google Drive CSV source. Check link access and network connectivity.";
+    dom.sections.innerHTML = "";
+    console.error(error);
   }
-
-  renderVanTypes();
-  wireEvents();
-  render();
 };
 
 init();

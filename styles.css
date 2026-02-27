@@ -139,14 +139,39 @@ button.secondary {
   flex-wrap: wrap;
 }
 
+.section-header.compact {
+  align-items: center;
+}
+
+.section-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+
+.section-total {
+  margin: 0;
+  font-weight: 800;
+  font-size: 1rem;
+}
+
 .section-controls {
   display: flex;
   gap: 0.45rem;
   align-items: center;
 }
 
+.inline-controls {
+  margin-top: 0.65rem;
+}
+
 .section-controls select {
   min-width: 260px;
+}
+
+.line-input {
+  width: 84px;
+  padding: 0.4rem 0.5rem;
 }
 
 table {
